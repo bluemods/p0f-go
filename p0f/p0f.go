@@ -121,17 +121,18 @@ func (p *P0f) Shutdown() {
 func (p *P0f) start() {
 	for !p.shutdown.Load() {
 		request, ok := <-p.requestQueue
+		if !ok {
+			// Channel closed, exit
+			return
+		}
+
 		func() {
 			defer request.wg.Done()
-			if !ok {
-				request.err = errors.New("this instance has been shutdown")
-			} else {
-				if request.err = p.writeRequest(request); request.err != nil {
-					return
-				}
-				request.response, request.err = p.readResponse(request.ip.String())
+			if err := p.writeRequest(request); err != nil {
+				request.err = err
 				return
 			}
+			request.response, request.err = p.readResponse(request.ip.String())
 		}()
 	}
 }
