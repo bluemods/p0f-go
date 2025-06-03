@@ -119,6 +119,8 @@ func (p *P0f) Shutdown() {
 // Long running background routine that processes requests
 // and delivers them back to waiting goroutines.
 func (p *P0f) start() {
+	defer p.conn.Close()
+
 	for !p.shutdown.Load() {
 		request, ok := <-p.requestQueue
 		if !ok {
