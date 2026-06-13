@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 )
 
 var (
@@ -38,34 +39,41 @@ func StartHttpWebServer(sockFile string, port int, ipResolver func(r *http.Reque
 	if err != nil {
 		return err
 	}
-	log.Printf("Started with sock '%s' on port %d\n", sockFile, port)
+	log := log.New(os.Stdout, "[p0f-web-server]", log.Ldate|log.Ltime|log.Lmsgprefix)
+	log.Printf("started with sock '%s' on port %d\n", sockFile, port)
 
 	return http.ListenAndServe(fmt.Sprintf(":%d", port), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ipString := ipResolver(r)
+
 		// Ensures that a new connection is attempted every time by a browser,
 		// which results in faster verdict changes
 		w.Header().Set("Connection", "close")
 
 		if r.Method != "GET" {
 			w.Header().Set("Allow", "GET")
+			log.Printf("%s: bad request method %s\n", ipString, r.Method)
 			http.Error(w, "", http.StatusMethodNotAllowed)
 			return
 		}
 
-		ip, _, err := net.SplitHostPort(ipResolver(r))
+		ip, _, err := net.SplitHostPort(ipString)
 		if err != nil {
+			log.Printf("%s: bad IP: %s\n", ipString, err.Error())
 			http.Error(w, "invalid source address", http.StatusBadRequest)
 			return
 		}
 
 		userIP := net.ParseIP(ip)
 		if userIP == nil {
+			log.Printf("%s: bad IP: %s\n", ipString, err.Error())
 			http.Error(w, "invalid source address", http.StatusBadRequest)
 			return
 		}
 
 		response, err := p.Query(userIP)
 		if err != nil {
-			http.Error(w, "query error: "+err.Error(), http.StatusInternalServerError)
+			log.Printf("query error: %s\n", err.Error())
+			http.Error(w, "query error", http.StatusInternalServerError)
 			return
 		}
 
@@ -76,6 +84,8 @@ func StartHttpWebServer(sockFile string, port int, ipResolver func(r *http.Reque
 		if r.URL.Query().Has("p") {
 			enc.SetIndent("", " ")
 		}
-		enc.Encode(response)
+		if err := enc.Encode(response); err != nil {
+			log.Printf("response encode error: %s\n", err.Error())
+		}
 	}))
 }
